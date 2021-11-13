@@ -107,9 +107,9 @@ class TunnelServer:
         proxy_url = os.environ.get('HTTPS_PROXY', None)
         if proxy_url:
             logger.info(f"Using proxy for App Service Tunnel connection: {proxy_url}")
-            http = urllib3.ProxyManager(proxy_url, cert_reqs=cert_reqs, ca_certs=certifi.where())
+            http = urllib3.ProxyManager(proxy_url, cert_reqs=cert_reqs, ca_certs=ca_bundle_file)
         else:
-            http = urllib3.PoolManager(cert_reqs=cert_reqs, ca_certs=certifi.where())
+            http = urllib3.PoolManager(cert_reqs=cert_reqs, ca_certs=ca_bundle_file)
 
         headers = urllib3.util.make_headers(basic_auth='{0}:{1}'.format(self.remote_user_name, self.remote_password))
         url = 'https://{}{}'.format(self.remote_addr, '/AppServiceTunnel/Tunnel.ashx?GetStatus&GetStatusAPIVer=2')
