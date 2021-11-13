@@ -98,31 +98,26 @@ class TunnelServer:
         proxies = urllib.request.getproxies()
         bypass_proxy = urllib.request.proxy_bypass(urllib.parse.urlparse(url).hostname)
 
-        if "https" in proxies and bypass_proxy is False:
-            proxy = urllib.parse.urlparse(proxies["https"])
+        if 'https' in proxies and bypass_proxy is False:
+            proxy = urllib.parse.urlparse(proxies['https'])
             logger.info('Using proxy for app service tunnel connection')
+            http = urllib3.ProxyManager(proxy.geturl())
         else:
-            proxy = None
+            http = urllib3.PoolManager()
 
-        pool_manager_kwargs = {}
         if should_disable_connection_verify():
-            pool_manager_kwargs["cert_reqs"] = 'CERT_NONE'
+            http.connection_pool_kw['cert_reqs'] = 'CERT_NONE'
         else:
-            pool_manager_kwargs["cert_reqs"] = 'CERT_REQUIRED'
+            http.connection_pool_kw['cert_reqs'] = 'CERT_REQUIRED'
             if REQUESTS_CA_BUNDLE in os.environ:
                 ca_bundle_file = os.environ[REQUESTS_CA_BUNDLE]
                 if not os.path.isfile(ca_bundle_file):
                     raise CLIError('REQUESTS_CA_BUNDLE environment variable is specified with an invalid file path')
-                pool_manager_kwargs["ca_certs"] = ca_bundle_file
+                http.connection_pool_kw['ca_certs'] = ca_bundle_file
                 logger.debug("Using CA bundle file at '%s'.", ca_bundle_file)
             else:
                 ca_bundle_file = certifi.where()
-                pool_manager_kwargs["ca_certs"] = certifi.where()
-
-        if proxy:
-            http = urllib3.ProxyManager(proxy.geturl(), **pool_manager_kwargs)
-        else:
-            http = urllib3.PoolManager(**pool_manager_kwargs)
+                http.connection_pool_kw['ca_certs'] = certifi.where()
 
         headers = urllib3.util.make_headers(basic_auth='{0}:{1}'.format(self.remote_user_name, self.remote_password))
         if self.instance is not None:
