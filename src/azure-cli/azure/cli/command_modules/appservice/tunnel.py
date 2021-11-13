@@ -9,6 +9,7 @@ import ssl
 import json
 import socket
 import time
+import os
 import traceback
 import logging as logs
 from contextlib import closing
@@ -88,10 +89,19 @@ class TunnelServer:
             urllib3.contrib.pyopenssl.inject_into_urllib3()
         except ImportError:
             pass
-
-        http = urllib3.PoolManager(cert_reqs='CERT_REQUIRED', ca_certs=certifi.where())
+            
         if should_disable_connection_verify():
-            http = urllib3.PoolManager(cert_reqs='CERT_NONE')
+            cert_reqs = 'CERT_NONE'
+        else:
+            cert_reqs = 'CERT_REQUIRED'
+
+        proxy_url = os.environ.get('HTTPS_PROXY', None)
+        if proxy_url:
+            logger.info(f"Using proxy for App Service Tunnel connection: {proxy_url}")
+            http = urllib3.ProxyManager(proxy_url, cert_reqs=cert_reqs, ca_certs=certifi.where())
+        else:
+            http = urllib3.PoolManager(cert_reqs=cert_reqs, ca_certs=certifi.where())
+
         headers = urllib3.util.make_headers(basic_auth='{0}:{1}'.format(self.remote_user_name, self.remote_password))
         url = 'https://{}{}'.format(self.remote_addr, '/AppServiceTunnel/Tunnel.ashx?GetStatus&GetStatusAPIVer=2')
         if self.instance is not None:
