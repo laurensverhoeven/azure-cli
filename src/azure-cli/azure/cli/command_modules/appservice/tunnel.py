@@ -23,6 +23,8 @@ from knack.util import CLIError
 from knack.log import get_logger
 logger = get_logger(__name__)
 
+REQUESTS_CA_BUNDLE = "REQUESTS_CA_BUNDLE"
+
 
 class TunnelWebSocket(WebSocket):
     def recv_frame(self):
@@ -89,11 +91,18 @@ class TunnelServer:
             urllib3.contrib.pyopenssl.inject_into_urllib3()
         except ImportError:
             pass
-            
+
         if should_disable_connection_verify():
             cert_reqs = 'CERT_NONE'
         else:
             cert_reqs = 'CERT_REQUIRED'
+            if REQUESTS_CA_BUNDLE in os.environ:
+                ca_bundle_file = os.environ[REQUESTS_CA_BUNDLE]
+                if not os.path.isfile(ca_bundle_file):
+                    raise CLIError('REQUESTS_CA_BUNDLE environment variable is specified with an invalid file path')
+                logger.debug("Using CA bundle file at '%s'.", ca_bundle_file)
+            else:
+                ca_bundle_file = certifi.where()
 
         proxy_url = os.environ.get('HTTPS_PROXY', None)
         if proxy_url:
