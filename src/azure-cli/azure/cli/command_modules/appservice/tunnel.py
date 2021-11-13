@@ -15,6 +15,7 @@ import logging as logs
 from contextlib import closing
 from datetime import datetime
 from threading import Thread
+import urllib
 
 import websocket
 from websocket import create_connection, WebSocket
@@ -92,27 +93,59 @@ class TunnelServer:
         except ImportError:
             pass
 
+        pool_manager_kwargs = {}
+
         if should_disable_connection_verify():
-            cert_reqs = 'CERT_NONE'
+            pool_manager_kwargs["cert_reqs"] = 'CERT_NONE'
         else:
-            cert_reqs = 'CERT_REQUIRED'
+            pool_manager_kwargs["cert_reqs"] = 'CERT_REQUIRED'
             if REQUESTS_CA_BUNDLE in os.environ:
                 ca_bundle_file = os.environ[REQUESTS_CA_BUNDLE]
                 if not os.path.isfile(ca_bundle_file):
                     raise CLIError('REQUESTS_CA_BUNDLE environment variable is specified with an invalid file path')
+                pool_manager_kwargs["ca_certs"] = ca_bundle_file
                 logger.debug("Using CA bundle file at '%s'.", ca_bundle_file)
             else:
                 ca_bundle_file = certifi.where()
+                pool_manager_kwargs["ca_certs"] = certifi.where()
 
-        proxy_url = os.environ.get('HTTPS_PROXY', None)
-        if proxy_url:
-            logger.info(f"Using proxy for App Service Tunnel connection: {proxy_url}")
-            http = urllib3.ProxyManager(proxy_url, cert_reqs=cert_reqs, ca_certs=ca_bundle_file)
+        url = 'https://{}{}'.format(self.remote_addr, '/AppServiceTunnel/Tunnel.ashx?GetStatus&GetStatusAPIVer=2')
+        # parsed = urllib.parse.urlparse(url)
+
+        proxies = urllib.request.getproxies()
+        bypass_proxy = urllib.request.proxy_bypass(urllib.parse.urlparse(url).hostname)
+        # print(f'proxies {proxies}')
+        # print(f'bypass {bypass}')
+        # print(f'parsed.hostname {parsed.hostname}')
+
+        if "https" in proxies and bypass_proxy is False:
+            proxy = urllib.parse.urlparse(proxies["https"])
+            logger.info('Using proxy for app service tunnel connection')
+            # logger.debug(f'Using proxy for app service tunnel connection: {proxy.scheme}://{proxy.hostname}:{proxy.port}')
         else:
-            http = urllib3.PoolManager(cert_reqs=cert_reqs, ca_certs=ca_bundle_file)
+            proxy = None
+
+        print("pool_manager_kwargs:")
+        print(pool_manager_kwargs)
+
+        if proxy:
+            http = urllib3.ProxyManager(proxy.geturl(), **pool_manager_kwargs)
+        else:
+            http = urllib3.PoolManager(cert_reqs=cert_reqs, **pool_manager_kwargs)
+
+        # exit()
+
+        # proxy_url = os.environ.get('HTTPS_PROXY', None)
+        # if proxy_url:
+        #     logger.info(f"Using proxy for App Service Tunnel connection: {proxy_url}")
+        #     # http = urllib3.ProxyManager(proxy_url, cert_reqs=cert_reqs, ca_certs=ca_bundle_file)
+        #     http = urllib3.ProxyManager(proxy_url, **pool_manager_kwargs)
+        # else:
+        #     # http = urllib3.PoolManager(cert_reqs=cert_reqs, ca_certs=ca_bundle_file)
+        #     http = urllib3.PoolManager(cert_reqs=cert_reqs, **pool_manager_kwargs)
 
         headers = urllib3.util.make_headers(basic_auth='{0}:{1}'.format(self.remote_user_name, self.remote_password))
-        url = 'https://{}{}'.format(self.remote_addr, '/AppServiceTunnel/Tunnel.ashx?GetStatus&GetStatusAPIVer=2')
+        print(f"\n\nURL is: {url}\n\n")
         if self.instance is not None:
             headers['Cookie'] = 'ARRAffinity=' + self.instance
         r = http.request(
